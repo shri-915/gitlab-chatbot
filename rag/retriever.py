@@ -13,7 +13,7 @@ import os
 import sys
 
 from supabase import create_client, Client
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,6 +31,11 @@ DEFAULT_TOP_K = 5
 # Supabase client
 # ---------------------------------------------------------------------------
 _supabase_client: Client = None
+
+
+def _retry_non_value_errors(exc: Exception) -> bool:
+    """Retry transient failures, but fail fast on configuration errors."""
+    return not isinstance(exc, ValueError)
 
 
 def _get_client() -> Client:
@@ -57,12 +62,28 @@ def _get_client() -> Client:
     return _supabase_client
 
 
+def _raise_friendly_supabase_error(exc: Exception):
+    """Raise a user-friendly error for common Supabase setup issues."""
+    message = str(exc)
+    if "PGRST205" in message or "Could not find the table" in message:
+        raise ValueError(
+            "Supabase schema is not initialized. Run supabase_setup.sql to create "
+            "gitlab_chunks and RPC functions before querying."
+        ) from exc
+    if "match_chunks" in message and ("not found" in message.lower() or "PGRST" in message):
+        raise ValueError(
+            "Supabase RPC function match_chunks is missing. Run supabase_setup.sql first."
+        ) from exc
+    raise exc
+
+
 # ---------------------------------------------------------------------------
 # Core retrieval functions
 # ---------------------------------------------------------------------------
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=2, max=15),
+    retry=retry_if_exception(_retry_non_value_errors),
 )
 def retrieve_chunks(
     query: str,
@@ -94,7 +115,10 @@ def retrieve_chunks(
     if filter_type:
         params["filter_type"] = filter_type
 
-    response = client.rpc("match_chunks", params).execute()
+    try:
+        response = client.rpc("match_chunks", params).execute()
+    except Exception as e:
+        _raise_friendly_supabase_error(e)
 
     results = response.data if response.data else []
 
@@ -117,6 +141,7 @@ def retrieve_chunks(
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=2, max=15),
+    retry=retry_if_exception(_retry_non_value_errors),
 )
 def retrieve_chunks_boosted(
     query: str,
@@ -149,7 +174,10 @@ def retrieve_chunks_boosted(
         params["boost_type"] = boost_type
         params["boost_factor"] = boost_factor
 
-    response = client.rpc("match_chunks_boosted", params).execute()
+    try:
+        response = client.rpc("match_chunks_boosted", params).execute()
+    except Exception as e:
+        _raise_friendly_supabase_error(e)
 
     results = response.data if response.data else []
 

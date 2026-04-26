@@ -14,7 +14,8 @@ import os
 
 from google import genai
 from google.genai import types as genai_types
-from tenacity import retry, stop_after_attempt, wait_exponential
+from google.genai.errors import ClientError
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from rag.guardrail import check_on_topic, get_off_topic_response
 from rag.router import route_query, get_category_label
@@ -24,9 +25,17 @@ from rag.retriever import retrieve_chunks, retrieve_chunks_boosted, get_top_simi
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-LLM_MODEL = "gemini-1.5-flash"
+LLM_MODEL = os.environ.get("LLM_MODEL", "gemini-flash-latest")
 CONFIDENCE_THRESHOLD = 0.75
 TOP_K = 5
+
+
+def _retry_transient_generation_errors(exc: Exception) -> bool:
+    """Retry only transient model errors, not invalid config/model requests."""
+    if isinstance(exc, ClientError):
+        code = getattr(exc, "code", None)
+        return code == 429 or (isinstance(code, int) and code >= 500)
+    return True
 
 SYSTEM_PROMPT = """You are GitLab's official Handbook Assistant. You help GitLab employees and candidates understand GitLab's culture, processes, values, and product direction.
 
@@ -72,7 +81,7 @@ def _get_client() -> genai.Client:
                 pass
         _client = genai.Client(
             api_key=api_key,
-            http_options=genai_types.HttpOptions(api_version="v1"),
+            http_options=genai_types.HttpOptions(api_version="v1beta"),
         )
     return _client
 
@@ -132,6 +141,7 @@ def _format_sources(chunks: list[dict]) -> list[dict]:
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=2, max=15),
+    retry=retry_if_exception(_retry_transient_generation_errors),
 )
 def _generate_answer(prompt: str) -> str:
     """Call Gemini via the new google.genai SDK to generate an answer."""
@@ -236,10 +246,25 @@ def run_rag_chain(query: str, history: list[dict] = None) -> dict:
         return result
 
     except Exception as e:
-        result["error"] = str(e)
-        result["answer"] = (
-            "I'm sorry, I encountered an error processing your question. "
-            "Please try again in a moment."
-        )
-        print(f"  ✗ RAG chain error: {e}")
+        root_error = e
+        if isinstance(e, RetryError):
+            try:
+                root_error = e.last_attempt.exception() or e
+            except Exception:
+                root_error = e
+
+        result["error"] = str(root_error)
+
+        if isinstance(root_error, ValueError):
+            result["answer"] = (
+                "Configuration error: "
+                f"{root_error}"
+            )
+        else:
+            result["answer"] = (
+                "I'm sorry, I encountered an error processing your question. "
+                "Please try again in a moment."
+            )
+
+        print(f"  ✗ RAG chain error: {root_error}")
         return result

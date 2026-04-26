@@ -5,10 +5,7 @@ Main application file for the RAG-based chatbot.
 Provides a full chat interface with guardrailing, confidence indicators,
 evidence panels, onboarding mode, and conversation memory.
 
-Usage:
-    streamlit run app.py
 """
-
 import os
 import sys
 
@@ -24,12 +21,20 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Configure API keys from Streamlit secrets (must happen before imports that use them)
 # ---------------------------------------------------------------------------
-if "GOOGLE_API_KEY" in st.secrets:
-    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-if "SUPABASE_URL" in st.secrets:
-    os.environ["SUPABASE_URL"] = st.secrets["SUPABASE_URL"]
-if "SUPABASE_KEY" in st.secrets:
-    os.environ["SUPABASE_KEY"] = st.secrets["SUPABASE_KEY"]
+def _load_secret_to_env(secret_name: str) -> None:
+    """Load a Streamlit secret into env vars without crashing if secrets.toml is missing."""
+    try:
+        secret_value = st.secrets.get(secret_name)
+    except Exception:
+        secret_value = None
+
+    if secret_value and secret_name not in os.environ:
+        os.environ[secret_name] = secret_value
+
+
+_load_secret_to_env("GOOGLE_API_KEY")
+_load_secret_to_env("SUPABASE_URL")
+_load_secret_to_env("SUPABASE_KEY")
 
 from rag.chain import run_rag_chain
 

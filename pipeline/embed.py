@@ -14,21 +14,31 @@ import time
 
 from google import genai
 from google.genai import types as genai_types
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google.genai.errors import ClientError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-EMBEDDING_MODEL = "models/text-embedding-004"
+EMBEDDING_MODEL = "gemini-embedding-001"
 BATCH_SIZE = 20           # Google API recommended batch size
-EMBEDDING_DIMENSION = 768  # text-embedding-004 output dimensions
+EMBEDDING_DIMENSION = 768  # Chosen to match Supabase VECTOR(768) schema
 
 
 # ---------------------------------------------------------------------------
 # Client factory (singleton)
 # ---------------------------------------------------------------------------
 _client: genai.Client = None
+
+
+def _retry_non_value_errors(exc: Exception) -> bool:
+    """Retry transient failures, but fail fast on configuration and client-side API errors."""
+    if isinstance(exc, ClientError):
+        code = getattr(exc, "code", None)
+        # Retry only rate-limits and server-side failures.
+        return code == 429 or (isinstance(code, int) and code >= 500)
+    return not isinstance(exc, ValueError)
 
 
 def _get_client() -> genai.Client:
@@ -55,7 +65,7 @@ def _get_client() -> genai.Client:
             )
         _client = genai.Client(
             api_key=api_key,
-            http_options=genai_types.HttpOptions(api_version="v1"),
+            http_options=genai_types.HttpOptions(api_version="v1beta"),
         )
     return _client
 
@@ -66,7 +76,7 @@ def _get_client() -> genai.Client:
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=4, max=60),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception(_retry_non_value_errors),
     before_sleep=lambda rs: print(
         f"  ⚠ Embedding API call failed, retrying in {rs.next_action.sleep:.0f}s... "
         f"(attempt {rs.attempt_number})"
@@ -83,6 +93,7 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
         contents=texts,
         config=genai_types.EmbedContentConfig(
             task_type="RETRIEVAL_DOCUMENT",
+            output_dimensionality=EMBEDDING_DIMENSION,
         ),
     )
     # response.embeddings is a list of ContentEmbedding objects with .values
@@ -92,7 +103,7 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=4, max=60),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception(_retry_non_value_errors),
 )
 def embed_query(query: str) -> list[float]:
     """
@@ -105,6 +116,7 @@ def embed_query(query: str) -> list[float]:
         contents=[query],
         config=genai_types.EmbedContentConfig(
             task_type="RETRIEVAL_QUERY",
+            output_dimensionality=EMBEDDING_DIMENSION,
         ),
     )
     return response.embeddings[0].values
@@ -123,6 +135,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
     """
     total = len(chunks)
     print(f"\nEmbedding {total} chunks in batches of {BATCH_SIZE}...")
+    failed_batches = 0
 
     for batch_start in range(0, total, BATCH_SIZE):
         batch_end = min(batch_start + BATCH_SIZE, total)
@@ -139,9 +152,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
 
         except Exception as e:
             print(f"  ✗ Failed to embed batch {batch_start}-{batch_end}: {e}")
-            # Zero-vector fallback so we don't lose chunks entirely
-            for i in range(len(batch)):
-                chunks[batch_start + i]["embedding"] = [0.0] * EMBEDDING_DIMENSION
+            failed_batches += 1
 
         # Polite delay between batches to respect rate limits
         if batch_end < total:
@@ -152,4 +163,15 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
         if "embedding" in c and any(v != 0.0 for v in c["embedding"])
     )
     print(f"\n✓ Embedding complete: {embedded_count}/{total} chunks successfully embedded")
+
+    if embedded_count == 0:
+        raise RuntimeError(
+            "Embedding failed for all chunks. Verify GOOGLE_API_KEY and model availability."
+        )
+
+    if failed_batches:
+        print(
+            f"  ⚠ {failed_batches} batch(es) failed during embedding; proceeding with partial results."
+        )
+
     return chunks

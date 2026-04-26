@@ -20,7 +20,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-CLASSIFIER_MODEL = "gemini-1.5-flash"
+CLASSIFIER_MODEL = os.environ.get("GUARDRAIL_MODEL", "gemini-flash-latest")
 
 GUARDRAIL_PROMPT = """You are a strict topic classifier. A user is interacting with a chatbot that ONLY answers questions about GitLab's internal handbook, company culture, values, engineering practices, people operations, product direction, and work processes.
 
@@ -67,7 +67,7 @@ def _get_client() -> genai.Client:
                 pass
         _client = genai.Client(
             api_key=api_key,
-            http_options=genai_types.HttpOptions(api_version="v1"),
+            http_options=genai_types.HttpOptions(api_version="v1beta"),
         )
     return _client
 
@@ -99,7 +99,11 @@ def check_on_topic(query: str) -> bool:
             ),
         )
 
-        result = response.text.strip().upper()
+        result = (response.text or "").strip().upper()
+
+        if not result:
+            # Fail open when model returns no text.
+            return True
 
         if "ON_TOPIC" in result:
             return True

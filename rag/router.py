@@ -19,7 +19,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-ROUTER_MODEL = "gemini-1.5-flash"
+ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "gemini-flash-latest")
 
 VALID_CATEGORIES = {
     "engineering",
@@ -77,7 +77,7 @@ def _get_client() -> genai.Client:
                 pass
         _client = genai.Client(
             api_key=api_key,
-            http_options=genai_types.HttpOptions(api_version="v1"),
+            http_options=genai_types.HttpOptions(api_version="v1beta"),
         )
     return _client
 
@@ -111,7 +111,11 @@ def route_query(query: str) -> tuple[str, str | None]:
             ),
         )
 
-        result = response.text.strip().lower().replace(" ", "_")
+        raw_text = (response.text or "").strip()
+        if not raw_text:
+            return "general", None
+
+        result = raw_text.lower().replace(" ", "_")
 
         if result in VALID_CATEGORIES:
             category = result

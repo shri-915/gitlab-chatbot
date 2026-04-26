@@ -22,6 +22,32 @@ CREATE TABLE IF NOT EXISTS gitlab_chunks (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Step 2.1: RLS policies for public handbook data
+-- We keep RLS enabled but allow anon/authenticated read + upsert for this dataset.
+ALTER TABLE gitlab_chunks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read gitlab chunks" ON gitlab_chunks;
+CREATE POLICY "Allow public read gitlab chunks"
+ON gitlab_chunks
+FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert gitlab chunks" ON gitlab_chunks;
+CREATE POLICY "Allow public insert gitlab chunks"
+ON gitlab_chunks
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public update gitlab chunks" ON gitlab_chunks;
+CREATE POLICY "Allow public update gitlab chunks"
+ON gitlab_chunks
+FOR UPDATE
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
 -- Step 3: Create an HNSW index on the embedding column for fast similarity search
 -- Using cosine distance operator (<=>) for HNSW
 CREATE INDEX IF NOT EXISTS idx_gitlab_chunks_embedding
