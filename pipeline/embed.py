@@ -24,6 +24,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 EMBEDDING_MODEL = "gemini-embedding-001"
 BATCH_SIZE = 20           # Google API recommended batch size
 EMBEDDING_DIMENSION = 768  # Chosen to match Supabase VECTOR(768) schema
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOTENV_FILE = os.path.join(PROJECT_ROOT, ".env")
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ def _get_client() -> genai.Client:
         if not api_key:
             try:
                 from dotenv import load_dotenv
-                load_dotenv()
+                load_dotenv(dotenv_path=DOTENV_FILE)
                 api_key = os.environ.get("GOOGLE_API_KEY", "")
             except ImportError:
                 pass

@@ -32,6 +32,8 @@ SCRAPED_DATA_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "scraped_data.json"
 )
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOTENV_FILE = os.path.join(PROJECT_ROOT, ".env")
 SUPABASE_TABLE = "gitlab_chunks"
 UPSERT_BATCH_SIZE = 50  # Rows per upsert batch
 DEFAULT_DIRECTION_MAX_PAGES = 100
@@ -99,6 +101,20 @@ def _get_supabase_client() -> Client:
     return create_client(url, key)
 
 
+def _ensure_required_env() -> None:
+    """Fail fast with a clear message if required env vars are missing."""
+    missing = [
+        name for name in ("GOOGLE_API_KEY", "SUPABASE_URL", "SUPABASE_KEY")
+        if not os.environ.get(name, "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            "Missing required environment variables: "
+            f"{', '.join(missing)}. "
+            "Set them in .env at project root or export them before running ingestion."
+        )
+
+
 def _ensure_supabase_table_ready(client: Client) -> None:
     """Verify the target table exists and is reachable before upserts."""
     try:
@@ -156,6 +172,8 @@ def run_ingestion(
     print("=" * 60)
 
     try:
+        _ensure_required_env()
+
         # Step 1: Load scraped data
         print("\n📄 Step 1: Loading scraped data...")
         pages = _load_scraped_data(
@@ -253,7 +271,7 @@ def run_ingestion(
 # CLI Entry Point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    load_dotenv()
+    load_dotenv(dotenv_path=DOTENV_FILE)
     success = run_ingestion()
     if not success:
         sys.exit(1)
