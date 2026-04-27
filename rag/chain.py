@@ -238,12 +238,7 @@ def run_rag_chain(query: str, history: list[dict] = None) -> dict:
         if result["is_confident"]:
             result["answer"] = answer
         else:
-            result["answer"] = (
-                "⚠️ I found some related content but I'm not confident it fully answers "
-                "your question. Here's what I found:\n\n"
-                f"{answer}\n\n"
-                "Please verify at the sources listed below."
-            )
+            result["answer"] = answer
 
         return result
 
@@ -256,17 +251,32 @@ def run_rag_chain(query: str, history: list[dict] = None) -> dict:
                 root_error = e
 
         result["error"] = str(root_error)
+        err_str = str(root_error).lower()
 
         if isinstance(root_error, ValueError):
             result["answer"] = (
-                "Configuration error: "
-                f"{root_error}"
+                "<strong>Configuration error</strong><br><br>"
+                f"There is a setup issue that prevented the assistant from loading: <em>{root_error}</em><br><br>"
+                "Please check that GOOGLE_API_KEY, SUPABASE_URL, and SUPABASE_KEY are correctly configured."
+            )
+        elif "quota" in err_str or "429" in err_str or "rate" in err_str:
+            result["answer"] = (
+                "<strong>The assistant has reached its API rate limit.</strong><br><br>"
+                "This is a temporary restriction on the free-tier API. "
+                "Please wait a minute and try your question again."
+            )
+        elif "connect" in err_str or "network" in err_str or "timeout" in err_str:
+            result["answer"] = (
+                "<strong>Connection issue detected.</strong><br><br>"
+                "The assistant couldn't reach the Gemini API or the Supabase database. "
+                "Please check your internet connection and try again."
             )
         else:
             result["answer"] = (
-                "I'm sorry, I encountered an error processing your question. "
-                "Please try again in a moment."
+                "<strong>Something went wrong while processing your question.</strong><br><br>"
+                "This is likely a transient error. Please try again in a moment. "
+                "If the problem persists, try rephrasing your question."
             )
 
-        print(f"  ✗ RAG chain error: {root_error}")
+        print(f"RAG chain error: {root_error}")
         return result

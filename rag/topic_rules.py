@@ -22,11 +22,11 @@ CATEGORY_BOOST_MAP = {
 }
 
 CATEGORY_LABELS = {
-    "engineering": "🔧 Engineering",
-    "people_ops": "👥 People Operations",
-    "product_direction": "🚀 Product Direction",
-    "values_culture": "💎 Values & Culture",
-    "general": "📋 General",
+    "engineering": "Engineering",
+    "people_ops": "People Operations",
+    "product_direction": "Product Direction",
+    "values_culture": "Values & Culture",
+    "general": "General",
 }
 
 ENGINEERING_KEYWORDS = {

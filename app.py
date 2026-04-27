@@ -86,7 +86,100 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* Source link styling */
+    /* ── Hero Section ──────────────────────────────────────────────── */
+    .hero-section {
+        background: linear-gradient(135deg, #0E0E2C 0%, #1A1A3E 50%, #2A1040 100%);
+        border: 1px solid rgba(252, 109, 38, 0.25);
+        border-radius: 20px;
+        padding: 48px 40px 40px;
+        margin-bottom: 32px;
+        position: relative;
+        overflow: hidden;
+        text-align: center;
+    }
+
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: -60px;
+        right: -60px;
+        width: 220px;
+        height: 220px;
+        background: radial-gradient(circle, rgba(252,109,38,0.12) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+
+    .hero-section::after {
+        content: '';
+        position: absolute;
+        bottom: -60px;
+        left: -60px;
+        width: 180px;
+        height: 180px;
+        background: radial-gradient(circle, rgba(56,13,117,0.2) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+
+    .hero-fox {
+        font-size: 4rem;
+        line-height: 1;
+        margin-bottom: 16px;
+        display: block;
+        filter: drop-shadow(0 0 20px rgba(252,109,38,0.5));
+        animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-8px); }
+    }
+
+    .hero-title {
+        font-size: 2.4rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #FC6D26 0%, #E24329 40%, #9B6DFF 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 12px;
+        line-height: 1.2;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+        color: #A8A8C0;
+        max-width: 580px;
+        margin: 0 auto 28px;
+        line-height: 1.65;
+    }
+
+    .hero-badges {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .hero-badge {
+        background: rgba(252, 109, 38, 0.1);
+        border: 1px solid rgba(252, 109, 38, 0.25);
+        color: #FC6D26;
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .hero-prompt-hint {
+        font-size: 0.85rem;
+        color: #6B6D80;
+        margin-top: 20px;
+    }
+
+    /* ── Source link styling ─────────────────────────────────────────── */
     .source-link {
         display: inline-block;
         background: linear-gradient(135deg, #292961 0%, #380D75 100%);
@@ -108,7 +201,7 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(252, 109, 38, 0.3);
     }
 
-    /* Confidence indicators */
+    /* ── Confidence indicators ──────────────────────────────────────── */
     .confidence-high {
         display: inline-flex;
         align-items: center;
@@ -135,7 +228,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
 
-    /* Category badge */
+    /* ── Category badge ──────────────────────────────────────────────── */
     .category-badge {
         display: inline-flex;
         align-items: center;
@@ -149,7 +242,7 @@ st.markdown("""
         margin-left: 8px;
     }
 
-    /* Evidence panel styling */
+    /* ── Evidence panel styling ──────────────────────────────────────── */
     .evidence-chunk {
         background: rgba(30, 30, 50, 0.4);
         border: 1px solid rgba(252, 109, 38, 0.15);
@@ -177,7 +270,7 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* Onboarding suggestions */
+    /* ── Onboarding suggestions ──────────────────────────────────────── */
     .suggestion-btn {
         display: block;
         width: 100%;
@@ -198,7 +291,7 @@ st.markdown("""
         background: linear-gradient(135deg, rgba(252, 109, 38, 0.15) 0%, rgba(226, 67, 41, 0.1) 100%);
     }
 
-    /* Welcome message */
+    /* ── Welcome message ────────────────────────────────────────────── */
     .welcome-box {
         background: linear-gradient(135deg, rgba(252, 109, 38, 0.08) 0%, rgba(226, 67, 41, 0.05) 100%);
         border: 1px solid rgba(252, 109, 38, 0.2);
@@ -220,7 +313,7 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* Sidebar styling */
+    /* ── Sidebar styling ─────────────────────────────────────────────── */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0E0E2C 0%, #1A1A3E 100%);
     }
@@ -233,13 +326,44 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* Off-topic warning card */
+    /* ── Error / off-topic cards ─────────────────────────────────────── */
     .offtopic-card {
-        background: rgba(241, 196, 15, 0.08);
-        border: 1px solid rgba(241, 196, 15, 0.3);
+        background: rgba(241, 196, 15, 0.07);
+        border: 1px solid rgba(241, 196, 15, 0.28);
         border-radius: 12px;
-        padding: 16px;
-        color: #f1c40f;
+        padding: 18px 20px;
+        color: #D4AF37;
+        line-height: 1.6;
+    }
+
+    .offtopic-card strong {
+        color: #F1C40F;
+        font-weight: 600;
+    }
+
+    .error-card {
+        background: rgba(231, 76, 60, 0.07);
+        border: 1px solid rgba(231, 76, 60, 0.28);
+        border-radius: 12px;
+        padding: 18px 20px;
+        color: #E88080;
+        line-height: 1.6;
+    }
+
+    .error-card strong {
+        color: #E74C3C;
+        font-weight: 600;
+    }
+
+    .lowconf-notice {
+        background: rgba(241, 196, 15, 0.07);
+        border-left: 3px solid #f39c12;
+        border-radius: 0 8px 8px 0;
+        padding: 10px 14px;
+        color: #D4AF37;
+        font-size: 0.84rem;
+        margin-top: 10px;
+        margin-bottom: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -285,7 +409,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="main-subtitle">AI-powered answers from GitLab\'s Handbook & Direction</div>',
+        '<div class="main-subtitle">AI-powered answers from GitLab\'s Handbook &amp; Direction</div>',
         unsafe_allow_html=True,
     )
 
@@ -302,10 +426,10 @@ with st.sidebar:
 
     # Suggested questions (when onboarding mode is ON)
     if st.session_state.ss_onboarding_mode:
-        st.markdown("#### 💡 Suggested Questions")
+        st.markdown("#### Suggested Questions")
         for i, question in enumerate(SUGGESTED_QUESTIONS):
             if st.button(
-                f"📌 {question}",
+                question,
                 key=f"suggest_{i}",
                 use_container_width=True,
             ):
@@ -324,9 +448,9 @@ with st.sidebar:
     # Footer
     st.markdown(
         '<div class="sidebar-footer">'
-        "Powered by GitLab Handbook + Direction<br>"
-        "Built with Gemini + RAG<br><br>"
-        "© 2024 GitLab Handbook Assistant"
+        "Grounded in GitLab Handbook &amp; Direction<br>"
+        "Built with Gemini Flash + RAG + Supabase<br><br>"
+        "© 2025 GitLab Handbook Assistant"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -336,7 +460,27 @@ with st.sidebar:
 # Main Chat Area
 # ---------------------------------------------------------------------------
 
-# Welcome message (when onboarding mode is ON and no messages yet)
+# ── Hero (shown only when no messages exist) ──────────────────────────────
+if not st.session_state.ss_messages:
+    st.markdown("""
+<div class="hero-section">
+    <span class="hero-fox">🦊</span>
+    <div class="hero-title">GitLab Handbook Assistant</div>
+    <div class="hero-subtitle">
+        Ask anything about GitLab's culture, values, engineering practices, people operations, or product direction —
+        every answer is grounded strictly in the official Handbook and Direction pages with full citations.
+    </div>
+    <div class="hero-badges">
+        <span class="hero-badge">Handbook</span>
+        <span class="hero-badge">Direction Pages</span>
+        <span class="hero-badge">Gemini Flash</span>
+        <span class="hero-badge">RAG + pgvector</span>
+    </div>
+    <div class="hero-prompt-hint">Type your question below to get started</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Onboarding welcome box (when onboarding mode is ON and no messages yet)
 if st.session_state.ss_onboarding_mode and not st.session_state.ss_messages:
     st.markdown(
         '<div class="welcome-box">'
@@ -358,9 +502,18 @@ for msg in st.session_state.ss_messages:
 
     with st.chat_message(role, avatar="🦊" if role == "assistant" else "👤"):
         if role == "assistant":
-            # Check if this was an off-topic response
+            # Off-topic response
             if metadata.get("is_off_topic"):
-                st.warning(content)
+                st.markdown(
+                    f'<div class="offtopic-card">{content}</div>',
+                    unsafe_allow_html=True,
+                )
+            # Error response
+            elif metadata.get("error"):
+                st.markdown(
+                    f'<div class="error-card">{content}</div>',
+                    unsafe_allow_html=True,
+                )
             else:
                 # Confidence indicator
                 is_confident = metadata.get("is_confident", True)
@@ -369,11 +522,11 @@ for msg in st.session_state.ss_messages:
 
                 if is_confident:
                     confidence_html = (
-                        f'<span class="confidence-high">🟢 High Confidence ({confidence_score:.0%})</span>'
+                        f'<span class="confidence-high">&#x25CF; High Confidence ({confidence_score:.0%})</span>'
                     )
                 else:
                     confidence_html = (
-                        f'<span class="confidence-low">🟡 Low Confidence ({confidence_score:.0%})</span>'
+                        f'<span class="confidence-low">&#x25CF; Low Confidence ({confidence_score:.0%})</span>'
                     )
 
                 if category_label:
@@ -388,23 +541,22 @@ for msg in st.session_state.ss_messages:
                 sources = metadata.get("sources", [])
                 if sources:
                     st.markdown("---")
-                    st.markdown("**📚 Sources:**")
+                    st.markdown("**Sources**")
                     source_links_html = ""
                     for src in sources:
                         title = src.get("section_title", "Source")
                         url = src.get("source_url", "#")
-                        # Truncate very long titles
                         display_title = title if len(title) <= 60 else title[:57] + "..."
                         source_links_html += (
                             f'<a href="{url}" target="_blank" class="source-link">'
-                            f"📄 {display_title}</a>\n"
+                            f"{display_title}</a>\n"
                         )
                     st.markdown(source_links_html, unsafe_allow_html=True)
 
                 # Evidence panel (collapsible)
                 chunks = metadata.get("chunks", [])
                 if chunks:
-                    with st.expander("🔍 View Sources & Evidence", expanded=False):
+                    with st.expander("View Sources & Evidence", expanded=False):
                         for i, chunk in enumerate(chunks, 1):
                             sim_score = chunk.get("similarity", 0.0)
                             section = chunk.get("section_title", "Unknown")
@@ -431,6 +583,10 @@ for msg in st.session_state.ss_messages:
 # ---------------------------------------------------------------------------
 def process_query(query: str):
     """Process a user query through the RAG chain and update the UI."""
+    query = query.strip()
+    if not query:
+        return
+
     # Add user message to history
     st.session_state.ss_messages.append({
         "role": "user",
@@ -444,7 +600,7 @@ def process_query(query: str):
 
     # Run RAG chain with spinner
     with st.chat_message("assistant", avatar="🦊"):
-        with st.spinner("🔍 Searching GitLab's Handbook & Direction..."):
+        with st.spinner("Searching GitLab's Handbook & Direction..."):
             # Build conversation history for context (last 3 turns)
             conv_history = []
             for msg in st.session_state.ss_messages[:-1]:  # Exclude current message
@@ -455,9 +611,12 @@ def process_query(query: str):
 
             result = run_rag_chain(query=query, history=conv_history)
 
-        # Handle off-topic responses
+        # ── Off-topic ────────────────────────────────────────────────────
         if not result["is_on_topic"]:
-            st.warning(result["answer"])
+            st.markdown(
+                f'<div class="offtopic-card">{result["answer"]}</div>',
+                unsafe_allow_html=True,
+            )
             st.session_state.ss_messages.append({
                 "role": "assistant",
                 "content": result["answer"],
@@ -465,9 +624,12 @@ def process_query(query: str):
             })
             return
 
-        # Handle errors
+        # ── Error ────────────────────────────────────────────────────────
         if result.get("error"):
-            st.error(result["answer"])
+            st.markdown(
+                f'<div class="error-card">{result["answer"]}</div>',
+                unsafe_allow_html=True,
+            )
             st.session_state.ss_messages.append({
                 "role": "assistant",
                 "content": result["answer"],
@@ -475,18 +637,18 @@ def process_query(query: str):
             })
             return
 
-        # Display confidence indicator
+        # ── Confidence indicator ─────────────────────────────────────────
         is_confident = result["is_confident"]
         confidence_score = result["confidence_score"]
         category_label = result["category_label"]
 
         if is_confident:
             confidence_html = (
-                f'<span class="confidence-high">🟢 High Confidence ({confidence_score:.0%})</span>'
+                f'<span class="confidence-high">&#x25CF; High Confidence ({confidence_score:.0%})</span>'
             )
         else:
             confidence_html = (
-                f'<span class="confidence-low">🟡 Low Confidence ({confidence_score:.0%})</span>'
+                f'<span class="confidence-low">&#x25CF; Low Confidence ({confidence_score:.0%})</span>'
             )
 
         if category_label:
@@ -494,14 +656,24 @@ def process_query(query: str):
 
         st.markdown(confidence_html, unsafe_allow_html=True)
 
-        # Display answer
+        # ── Answer ───────────────────────────────────────────────────────
         st.markdown(result["answer"])
 
-        # Display source citations
+        # Low confidence notice below the answer
+        if not is_confident:
+            st.markdown(
+                '<div class="lowconf-notice">'
+                "The retrieved content had a low similarity score for this query. "
+                "The answer above may be incomplete — please verify at the source links below."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ── Source citations ─────────────────────────────────────────────
         sources = result["sources"]
         if sources:
             st.markdown("---")
-            st.markdown("**📚 Sources:**")
+            st.markdown("**Sources**")
             source_links_html = ""
             for src in sources:
                 title = src.get("section_title", "Source")
@@ -509,14 +681,14 @@ def process_query(query: str):
                 display_title = title if len(title) <= 60 else title[:57] + "..."
                 source_links_html += (
                     f'<a href="{url}" target="_blank" class="source-link">'
-                    f"📄 {display_title}</a>\n"
+                    f"{display_title}</a>\n"
                 )
             st.markdown(source_links_html, unsafe_allow_html=True)
 
-        # Display evidence panel
+        # ── Evidence panel ───────────────────────────────────────────────
         chunks = result["chunks"]
         if chunks:
-            with st.expander("🔍 View Sources & Evidence", expanded=False):
+            with st.expander("View Sources & Evidence", expanded=False):
                 for i, chunk in enumerate(chunks, 1):
                     sim_score = chunk.get("similarity", 0.0)
                     section = chunk.get("section_title", "Unknown")
@@ -535,7 +707,7 @@ def process_query(query: str):
                         unsafe_allow_html=True,
                     )
 
-        # Save to session state
+        # ── Save to session state ────────────────────────────────────────
         st.session_state.ss_messages.append({
             "role": "assistant",
             "content": result["answer"],
@@ -558,6 +730,6 @@ if st.session_state.ss_pending_question:
     process_query(query)
 
 # Chat input
-user_input = st.chat_input("Ask me about GitLab's Handbook or Direction...")
+user_input = st.chat_input("Ask about GitLab's Handbook or Direction pages...")
 if user_input:
     process_query(user_input)
