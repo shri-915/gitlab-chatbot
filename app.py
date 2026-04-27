@@ -542,7 +542,7 @@ for msg in st.session_state.ss_messages:
                 st.markdown(confidence_html, unsafe_allow_html=True)
 
                 # Answer text
-                st.markdown(content)
+                st.markdown(content, unsafe_allow_html=True)
 
                 # Source citations
                 sources = metadata.get("sources", [])
@@ -664,7 +664,7 @@ def process_query(query: str):
         st.markdown(confidence_html, unsafe_allow_html=True)
 
         # ── Answer ───────────────────────────────────────────────────────
-        st.markdown(result["answer"])
+        st.markdown(result["answer"], unsafe_allow_html=True)
 
         # Low confidence notice below the answer
         if not is_confident:
