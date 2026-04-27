@@ -104,7 +104,7 @@ def _get_supabase_client() -> Client:
 def _ensure_required_env() -> None:
     """Fail fast with a clear message if required env vars are missing."""
     missing = [
-        name for name in ("GOOGLE_API_KEY", "SUPABASE_URL", "SUPABASE_KEY")
+        name for name in ("SUPABASE_URL", "SUPABASE_KEY")
         if not os.environ.get(name, "").strip()
     ]
     if missing:

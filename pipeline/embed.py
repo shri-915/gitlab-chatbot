@@ -1,8 +1,7 @@
 """
 Embedding Logic
 ================
-Embeds text chunks using Google's text-embedding-004 model via the new google-genai SDK.
-Handles batching (groups of 20) and retry logic with tenacity.
+Embeds text chunks locally using a Sentence-Transformers model.
 
 Usage:
     from pipeline.embed import embed_chunks
@@ -12,116 +11,141 @@ Usage:
 import os
 import time
 
-from google import genai
-from google.genai import types as genai_types
-from google.genai.errors import ClientError
+from sentence_transformers import SentenceTransformer
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-EMBEDDING_MODEL = "gemini-embedding-001"
-BATCH_SIZE = 20           # Google API recommended batch size
-EMBEDDING_DIMENSION = 768  # Chosen to match Supabase VECTOR(768) schema
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOTENV_FILE = os.path.join(PROJECT_ROOT, ".env")
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=DOTENV_FILE)
+except ImportError:
+    pass
+
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", "100"))
+EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION", "768"))
+EMBEDDING_LOCAL_ENCODE_BATCH_SIZE = int(os.environ.get("EMBEDDING_LOCAL_ENCODE_BATCH_SIZE", "64"))
+EMBEDDING_BATCH_CHAR_BUDGET = int(os.environ.get("EMBEDDING_BATCH_CHAR_BUDGET", "300000"))
+EMBEDDING_BETWEEN_BATCH_DELAY = float(os.environ.get("EMBEDDING_BETWEEN_BATCH_DELAY", "0.0"))
+EMBEDDING_RETRY_MIN_DELAY = int(os.environ.get("EMBEDDING_RETRY_MIN_DELAY", "3"))
+EMBEDDING_BATCH_MAX_ATTEMPTS = int(os.environ.get("EMBEDDING_BATCH_MAX_ATTEMPTS", "3"))
+
 
 # ---------------------------------------------------------------------------
-# Client factory (singleton)
+# Model factory (singleton)
 # ---------------------------------------------------------------------------
-_client: genai.Client = None
+_model: SentenceTransformer = None
 
 
 def _retry_non_value_errors(exc: Exception) -> bool:
-    """Retry transient failures, but fail fast on configuration and client-side API errors."""
-    if isinstance(exc, ClientError):
-        code = getattr(exc, "code", None)
-        # Retry only rate-limits and server-side failures.
-        return code == 429 or (isinstance(code, int) and code >= 500)
+    """Retry transient failures, but fail fast on configuration errors."""
     return not isinstance(exc, ValueError)
 
 
-def _get_client() -> genai.Client:
-    """Get or create a google.genai Client (singleton) using v1 API."""
-    global _client
-    if _client is None:
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-        if not api_key:
-            try:
-                from dotenv import load_dotenv
-                load_dotenv(dotenv_path=DOTENV_FILE)
-                api_key = os.environ.get("GOOGLE_API_KEY", "")
-            except ImportError:
-                pass
-        if not api_key:
-            try:
-                import streamlit as st
-                api_key = st.secrets.get("GOOGLE_API_KEY", "")
-            except Exception:
-                pass
-        if not api_key:
+def _get_model() -> SentenceTransformer:
+    """Get or create the local embedding model singleton."""
+    global _model
+    if _model is None:
+        try:
+            print(f"Loading local embedding model: {EMBEDDING_MODEL}")
+            _model = SentenceTransformer(EMBEDDING_MODEL)
+        except Exception as e:
             raise ValueError(
-                "GOOGLE_API_KEY not found. Set it in .env or as an environment variable."
+                f"Failed to load local embedding model '{EMBEDDING_MODEL}'. "
+                "Ensure sentence-transformers is installed and model name is valid."
+            ) from e
+
+        model_dim_getter = getattr(_model, "get_embedding_dimension", None)
+        if callable(model_dim_getter):
+            model_dim = model_dim_getter()
+        else:
+            model_dim = _model.get_sentence_embedding_dimension()
+        if model_dim and model_dim != EMBEDDING_DIMENSION:
+            raise ValueError(
+                f"Embedding dimension mismatch: model '{EMBEDDING_MODEL}' outputs {model_dim} dims, "
+                f"but EMBEDDING_DIMENSION is {EMBEDDING_DIMENSION}. "
+                "Update EMBEDDING_DIMENSION or Supabase VECTOR dimension/schema."
             )
-        _client = genai.Client(
-            api_key=api_key,
-            http_options=genai_types.HttpOptions(api_version="v1beta"),
-        )
-    return _client
+
+    return _model
+
+
+def _iter_embedding_batches(chunks: list[dict]) -> list[list[dict]]:
+    """Split chunks into batches that fit configured item and character budgets."""
+    batches = []
+    batch = []
+    batch_chars = 0
+
+    for chunk in chunks:
+        chunk_chars = len(chunk.get("chunk_text", ""))
+        if batch and (
+            len(batch) >= BATCH_SIZE or batch_chars + chunk_chars > EMBEDDING_BATCH_CHAR_BUDGET
+        ):
+            batches.append(batch)
+            batch = []
+            batch_chars = 0
+
+        batch.append(chunk)
+        batch_chars += chunk_chars
+
+    if batch:
+        batches.append(batch)
+
+    return batches
 
 
 # ---------------------------------------------------------------------------
 # Retry-wrapped embedding call
 # ---------------------------------------------------------------------------
 @retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=2, min=4, max=60),
+    stop=stop_after_attempt(EMBEDDING_BATCH_MAX_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=EMBEDDING_RETRY_MIN_DELAY, max=180),
     retry=retry_if_exception(_retry_non_value_errors),
     before_sleep=lambda rs: print(
-        f"  ⚠ Embedding API call failed, retrying in {rs.next_action.sleep:.0f}s... "
+        f"  ⚠ Embedding batch failed, retrying in {rs.next_action.sleep:.0f}s... "
         f"(attempt {rs.attempt_number})"
     ),
 )
 def _embed_batch(texts: list[str]) -> list[list[float]]:
     """
-    Embed a batch of texts using the new google.genai SDK.
+    Embed a batch of texts using a local Sentence-Transformers model.
     Returns a list of embedding vectors (list of floats).
     """
-    client = _get_client()
-    response = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=texts,
-        config=genai_types.EmbedContentConfig(
-            task_type="RETRIEVAL_DOCUMENT",
-            output_dimensionality=EMBEDDING_DIMENSION,
-        ),
+    model = _get_model()
+    vectors = model.encode(
+        texts,
+        batch_size=EMBEDDING_LOCAL_ENCODE_BATCH_SIZE,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+        normalize_embeddings=True,
     )
-    # response.embeddings is a list of ContentEmbedding objects with .values
-    return [emb.values for emb in response.embeddings]
+    return vectors.tolist()
 
 
 @retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=2, min=4, max=60),
+    stop=stop_after_attempt(EMBEDDING_BATCH_MAX_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=EMBEDDING_RETRY_MIN_DELAY, max=180),
     retry=retry_if_exception(_retry_non_value_errors),
 )
 def embed_query(query: str) -> list[float]:
     """
     Embed a single query string for retrieval.
-    Uses RETRIEVAL_QUERY task type for better search performance.
     """
-    client = _get_client()
-    response = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=[query],
-        config=genai_types.EmbedContentConfig(
-            task_type="RETRIEVAL_QUERY",
-            output_dimensionality=EMBEDDING_DIMENSION,
-        ),
+    model = _get_model()
+    vector = model.encode(
+        [query],
+        batch_size=1,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+        normalize_embeddings=True,
     )
-    return response.embeddings[0].values
+    return vector[0].tolist()
 
 
 # ---------------------------------------------------------------------------
@@ -138,27 +162,29 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
     total = len(chunks)
     print(f"\nEmbedding {total} chunks in batches of {BATCH_SIZE}...")
     failed_batches = 0
+    batch_start = 0
 
-    for batch_start in range(0, total, BATCH_SIZE):
-        batch_end = min(batch_start + BATCH_SIZE, total)
-        batch = chunks[batch_start:batch_end]
+    for batch in _iter_embedding_batches(chunks):
+        batch_end = batch_start + len(batch)
         texts = [c["chunk_text"] for c in batch]
 
         try:
             embeddings = _embed_batch(texts)
             for i, embedding in enumerate(embeddings):
-                chunks[batch_start + i]["embedding"] = embedding
+                batch[i]["embedding"] = embedding
 
             progress = batch_end / total * 100
             print(f"  [{batch_end:>5}/{total}] ({progress:.1f}%) Embedded batch {batch_start}-{batch_end}")
 
         except Exception as e:
-            print(f"  ✗ Failed to embed batch {batch_start}-{batch_end}: {e}")
             failed_batches += 1
+            print(f"  ✗ Failed to embed batch {batch_start}-{batch_end}: {e}")
 
-        # Polite delay between batches to respect rate limits
+        # Fixed cooldown between full-size batches to reduce quota pressure.
         if batch_end < total:
-            time.sleep(0.3)
+            time.sleep(EMBEDDING_BETWEEN_BATCH_DELAY)
+
+        batch_start = batch_end
 
     embedded_count = sum(
         1 for c in chunks
@@ -168,7 +194,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
 
     if embedded_count == 0:
         raise RuntimeError(
-            "Embedding failed for all chunks. Verify GOOGLE_API_KEY and model availability."
+            "Embedding failed for all chunks. Verify local model configuration and dependencies."
         )
 
     if failed_batches:

@@ -14,10 +14,9 @@
 │                                                                     │
 │   ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌─────────────┐  │
 │   │  Scraper  │───▶│  Chunker │───▶│ Embedder │───▶│  Supabase   │  │
-│   │ (BS4 +   │    │(LangChain│    │ (Google   │    │ (pgvector)  │  │
-│   │ requests)│    │ RCTS)    │    │ text-emb  │    │             │  │
-│   └──────────┘    └──────────┘    │  -004)    │    └─────────────┘  │
-│                                   └──────────┘                      │
+│   │ (BS4 +   │    │(LangChain│    │ (Local    │    │ (pgvector)  │  │
+│   │ requests)│    │ RCTS)    │    │  BGE)     │    │             │  │
+│   └──────────┘    └──────────┘    └──────────┘    └─────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -40,7 +39,7 @@
 
 1. **Scraper** → Crawls GitLab Handbook (≤300 pages) and Direction sub-pages using `requests` + `BeautifulSoup4`. Saves structured JSON with heading hierarchy preserved.
 2. **Chunker** → Splits scraped text by sections using LangChain's `RecursiveCharacterTextSplitter` (~600 tokens, 100 overlap). Prepends H1/H2/H3 context to each chunk.
-3. **Embedder** → Embeds all chunks in batches of 20 using Google `text-embedding-004` (768 dimensions). Includes retry logic via `tenacity`.
+3. **Embedder** → Embeds all chunks locally in batches using Sentence-Transformers `BAAI/bge-base-en-v1.5` (768 dimensions), avoiding Gemini embedding quota limits.
 4. **Supabase** → Stores chunks with embeddings in a `pgvector`-enabled table. Uses HNSW indexing for fast cosine similarity search. SHA-256 hash deduplication.
 5. **Guardrail** → Lightweight Gemini classifier rejects off-topic queries before RAG runs.
 6. **Router** → Classifies queries into categories (engineering, people_ops, product_direction, values_culture, general) and boosts retrieval from matching sources.
@@ -70,7 +69,7 @@
 ### Prerequisites
 
 - Python 3.10+
-- A [Google AI Studio](https://aistudio.google.com/) API key (free tier: 1,500 calls/day)
+- A [Google AI Studio](https://aistudio.google.com/) API key (needed for answer generation with Gemini Flash)
 - A [Supabase](https://supabase.com/) project (free tier available)
 
 ### Step 1: Clone the Repository
@@ -102,7 +101,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env and fill in your actual values:
-# GOOGLE_API_KEY=your_key_here
+# GOOGLE_API_KEY=your_key_here  # Needed for generation, not embeddings
 # SUPABASE_URL=https://your-project.supabase.co
 # SUPABASE_KEY=your_anon_key_here
 ```
@@ -171,7 +170,7 @@ gitlab-chatbot/
 ├── pipeline/
 │   ├── __init__.py
 │   ├── chunk.py               # LangChain chunking logic
-│   ├── embed.py               # Google text-embedding-004 embedding
+│   ├── embed.py               # Local sentence-transformers embedding
 │   └── ingest.py              # Orchestrator: scrape → chunk → embed → upsert
 ├── rag/
 │   ├── __init__.py
@@ -204,8 +203,8 @@ gitlab-chatbot/
 - Separators: `\n\n` → `\n` → `. ` → ` ` → `""`
 
 ### Embedding & Storage
-- Google `text-embedding-004` (768 dimensions)
-- Batched in groups of 20 with exponential backoff retry
+- Local `BAAI/bge-base-en-v1.5` embeddings (768 dimensions)
+- Batched locally with configurable batch size and retry
 - HNSW index on Supabase for sub-second similarity search
 - SHA-256 chunk hash deduplication prevents re-insertion
 

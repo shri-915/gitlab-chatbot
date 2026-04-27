@@ -17,6 +17,7 @@ from google.genai import types as genai_types
 from google.genai.errors import ClientError
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential, retry_if_exception
 
+from gemini_limits import acquire, estimate_tokens
 from rag.guardrail import check_on_topic, get_off_topic_response
 from rag.router import route_query, get_category_label
 from rag.retriever import retrieve_chunks, retrieve_chunks_boosted, get_top_similarity
@@ -145,6 +146,7 @@ def _format_sources(chunks: list[dict]) -> list[dict]:
 )
 def _generate_answer(prompt: str) -> str:
     """Call Gemini via the new google.genai SDK to generate an answer."""
+    acquire("flash", estimate_tokens(prompt) + 1500, operation="answer generation")
     client = _get_client()
     response = client.models.generate_content(
         model=LLM_MODEL,
