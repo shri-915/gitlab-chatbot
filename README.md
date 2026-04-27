@@ -2,8 +2,6 @@
 
 > An AI-powered RAG chatbot that answers questions about GitLab's public [Handbook](https://handbook.gitlab.com/) and [Direction](https://about.gitlab.com/direction/) pages — grounded strictly in those sources, with full citations and transparency.
 
-![GitLab Handbook Assistant Screenshot](screenshot_placeholder.png)
-
 ---
 
 ## 📐 Architecture
