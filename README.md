@@ -64,6 +64,24 @@
 | **Onboarding Mode** | Sidebar toggle with 8 curated starter questions for new GitLab employees |
 | **Conversation Memory** | Last 3 turns of conversation context passed to Gemini for natural follow-ups |
 | **Clean UI** | Minimal emoji usage — only functional avatars retained; all decorative clutter removed |
+| **Multi-Key Rotation** | Round-robin pool of up to 10 Gemini API keys with 429-triggered backoff and auto-scaling quotas |
+| **Meta Query Handler** | Chatbot identity and GitLab company questions answered instantly without burning an API call |
+
+---
+
+## Screenshots
+
+### Hero — Landing State
+![Hero landing page with animated fox, gradient title, and capability badges](docs/screenshots/01_hero.png)
+
+### Chat Answer with Sources
+![Chat answer showing confidence badge, answer text, source citation, and collapsed evidence expander](docs/screenshots/02_chat_answer.png)
+
+### Evidence Panel (Expanded)
+![Evidence panel open, showing ranked source chunks with similarity scores and handbook links](docs/screenshots/03_evidence_panel.png)
+
+### New Employee Onboarding Mode
+![Onboarding mode with sidebar suggested questions and welcome box](docs/screenshots/04_onboarding_mode.png)
 
 ---
 
@@ -86,10 +104,13 @@ gitlab-chatbot/
 │   ├── retriever.py           # Supabase vector search
 │   ├── guardrail.py           # On-topic classifier + graceful response messages
 │   ├── router.py              # Section-aware query router
-│   ├── topic_rules.py         # Keyword-based topic & category rules
+│   ├── topic_rules.py         # Keyword-based topic & category rules (incl. meta)
+│   ├── key_pool.py            # Thread-safe round-robin Gemini API key pool
 │   └── chain.py               # Full RAG chain orchestration
+├── docs/
+│   └── screenshots/           # App screenshots for README
 ├── app.py                     # Streamlit UI (main entry point)
-├── gemini_limits.py           # Rate-limit token bucket for Gemini API
+├── gemini_limits.py           # Rate-limit token bucket (auto-scales with key count)
 ├── supabase_setup.sql         # Database setup script
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # Environment variable template
@@ -198,6 +219,27 @@ This section documents the major technical decisions, failed approaches, and the
 | **guardrail.py bug fix** | `OFF_TOPIC_RESPONSE` was referenced but never defined — fixed by defining it in `guardrail.py` with proper HTML-formatted copy |
 | **Status** | **Current approach — production** |
 
+### Version 0.8 — Multi-Key Gemini API Rotation
+
+| Aspect | Detail |
+|--------|--------|
+| **Problem** | Free-tier Gemini Flash limit is 20 RPD per key — exhausted quickly in demo/evaluation scenarios |
+| **Solution** | Implemented `rag/key_pool.py`: a thread-safe `GeminiKeyPool` with round-robin rotation across up to 10 keys |
+| **Self-healing** | On a `429 ResourceExhausted`, the pool marks that key with a 62-second backoff and immediately rotates to the next available key; the tenacity retry then succeeds with a fresh quota |
+| **Auto-scaling quotas** | `gemini_limits.py` detects the key count at startup and multiplies all RPD/RPM ceilings (e.g. 3 keys → 60 RPD, 15 RPM) |
+| **Secrets format** | Keys are loaded from `GOOGLE_API_KEY_1` … `GOOGLE_API_KEY_10` in Streamlit secrets or environment variables |
+| **Status** | **Current approach — production** |
+
+### Version 0.9 — Meta Query Handler & Enriched System Prompt
+
+| Aspect | Detail |
+|--------|--------|
+| **Problem** | Questions like "Who are you?", "What is GitLab?", "Where is GitLab located?" were either rejected by the guardrail or returned poor RAG answers with low-relevance chunks |
+| **Solution** | Added `META_KEYWORDS` set in `topic_rules.py`; meta queries short-circuit the RAG pipeline entirely in `chain.py` and return a rich hardcoded response with links — no API call consumed |
+| **System prompt** | Enriched `SYSTEM_PROMPT` with verified GitLab company facts (founding year, HQ, CEO, IPO, mission, user count) so the LLM can also handle factual questions within the regular pipeline |
+| **Guardrail update** | Meta queries are now always classified as on-topic (`is_on_topic → True`) and routed to the new `"meta"` / `"About"` category |
+| **Status** | **Current approach — production** |
+
 ---
 ## Setup Instructions - if you want to run this locally and deploy for yourself
 
@@ -275,15 +317,27 @@ The app will open at `http://localhost:8501`.
 2. Go to [share.streamlit.io](https://share.streamlit.io/)
 3. Click **"New app"** and select your repository
 4. Set the main file path to `app.py`
-5. Go to **"Advanced settings" → "Secrets"** and paste **only these three keys**:
+5. Go to **"Advanced settings" → "Secrets"** and paste your keys in TOML format.
 
+**Single key (minimum):**
 ```toml
-GOOGLE_API_KEY = "your_actual_google_api_key"
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_KEY = "your_anon_key_here"
+GOOGLE_API_KEY_1 = "your_actual_google_api_key"
+SUPABASE_URL     = "https://your-project.supabase.co"
+SUPABASE_KEY     = "your_anon_key_here"
 ```
 
-> **Why only 3 keys?** The embedding variables (`EMBEDDING_*`) and rate-limit config (`GEMINI_FLASH_*`) are only used during the one-time local ingestion pipeline, which has already been run. They are not needed at runtime on Streamlit Cloud.
+**Multiple keys (recommended — scales quota linearly):**
+```toml
+GOOGLE_API_KEY_1 = "AIza..."
+GOOGLE_API_KEY_2 = "AIza..."
+GOOGLE_API_KEY_3 = "AIza..."
+SUPABASE_URL     = "https://your-project.supabase.co"
+SUPABASE_KEY     = "your_anon_key_here"
+```
+
+> **Multi-key rotation:** The app auto-discovers `GOOGLE_API_KEY_1` through `GOOGLE_API_KEY_10`. Each additional key adds 20 RPD and 5 RPM to the effective quota (3 keys = 60 RPD). On a 429 rate-limit error, the system marks the current key with a 62-second backoff and transparently rotates to the next available key.
+
+> **Why numbered keys instead of `GOOGLE_API_KEY`?** The numbered scheme allows the app to build a key pool at startup without any code changes. Add more keys to `secrets.toml` and the quota scales automatically.
 
 6. Click **"Deploy"**
 

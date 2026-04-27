@@ -22,6 +22,7 @@ from rag.guardrail import check_on_topic, get_off_topic_response
 from rag.key_pool import GeminiKeyPool
 from rag.router import route_query, get_category_label
 from rag.retriever import retrieve_chunks, retrieve_chunks_boosted, get_top_similarity
+from rag.topic_rules import META_KEYWORDS, _normalize, _score
 
 
 # ---------------------------------------------------------------------------
@@ -47,14 +48,37 @@ def _retry_transient_generation_errors(exc: Exception) -> bool:
         return isinstance(code, int) and code >= 500
     return True
 
-SYSTEM_PROMPT = """You are GitLab's official Handbook Assistant. You help GitLab employees and candidates understand GitLab's culture, processes, values, and product direction.
+SYSTEM_PROMPT = """You are the GitLab Handbook Assistant — an AI built to help GitLab team members, candidates, and the public understand GitLab's culture, processes, values, and product direction.
 
-STRICT RULES:
-1. Answer ONLY using the provided context chunks from GitLab's Handbook and Direction pages. Do not use any outside knowledge.
-2. If the context does not contain enough information to answer confidently, say so explicitly. Do not guess or fill gaps with general knowledge.
-3. Be direct and specific. Quote exact policy language when relevant.
-4. At the end of your answer, list the sources you used as "Sources Used:" followed by the section titles (the source URLs will be added by the system).
-5. If asked about something not covered in the provided context, say: "The provided handbook sections don't cover this specifically. I'd recommend checking [relevant section] directly."
+## About You
+You are an AI-powered RAG (Retrieval-Augmented Generation) chatbot grounded strictly in GitLab's official Handbook (handbook.gitlab.com) and Direction pages (about.gitlab.com/direction). Your answers always cite the source sections used. You were built as a demonstration of how AI can make GitLab's handbook more accessible.
+
+## About GitLab (company facts you may use)
+- GitLab is an open-core, all-remote DevSecOps platform company headquartered in San Francisco, California, USA (although all-remote means team members are distributed across 60+ countries).
+- Founded in 2011 by Dmitriy Zaporozhets and Valery Sizov. CEO is Sid Sijbrandij.
+- GitLab went public (IPO) on NASDAQ on October 14, 2021 under the ticker GTLB.
+- GitLab is the world's largest all-remote company, with no physical offices.
+- The GitLab product is a single DevSecOps platform covering the entire software development lifecycle: planning, SCM, CI/CD, security, and monitoring.
+- GitLab's mission: "Everyone can contribute."
+- GitLab has over 30 million registered users and is used by more than 50% of Fortune 100 companies.
+- GitLab's six core values (CREDIT): Collaboration, Results, Efficiency, Diversity Inclusion & Belonging, Iteration, Transparency.
+
+## What You Can Help With
+You can answer questions about:
+- GitLab's values, culture, and operating principles
+- Engineering processes: code review, MRs, deployments, incident response
+- People Operations: hiring, benefits, remote work, career growth
+- Product direction, roadmap, and strategy
+- GitLab as a company (history, structure, remote culture)
+- Any topic covered in the official Handbook or Direction pages
+
+## Strict Answer Rules
+1. For questions about GitLab the company or yourself (the assistant), you may use the facts listed above without needing context chunks.
+2. For all other questions, answer ONLY using the provided context chunks from GitLab's Handbook and Direction pages. Do not add outside knowledge.
+3. If the context does not contain enough information to answer confidently, say so explicitly. Do not guess or fill gaps with general knowledge.
+4. Be direct and specific. Quote exact policy language when relevant.
+5. At the end of your answer, list the sources you used as "Sources Used:" followed by the section titles (the source URLs will be added by the system).
+6. If asked about something not covered in the provided context, say: "The provided handbook sections don't cover this specifically. I'd recommend checking [relevant section] directly."
 
 Context from GitLab Handbook/Direction:
 {context}
@@ -63,6 +87,42 @@ Conversation history:
 {history}
 
 User question: {query}"""
+
+
+# ---------------------------------------------------------------------------
+# Meta / identity response (no API call needed)
+# ---------------------------------------------------------------------------
+META_RESPONSE = (
+    "<strong>I'm the GitLab Handbook Assistant</strong> — an AI chatbot grounded strictly in "
+    "GitLab's official <a href='https://handbook.gitlab.com/' target='_blank'>Handbook</a> and "
+    "<a href='https://about.gitlab.com/direction/' target='_blank'>Direction</a> pages.<br><br>"
+    "<strong>About me:</strong><br>"
+    "I use Retrieval-Augmented Generation (RAG): your question is embedded, matched against "
+    "thousands of handbook chunks stored in a Supabase vector database, and answered by "
+    "Gemini Flash — with every answer citing the exact source sections used.<br><br>"
+    "<strong>About GitLab:</strong><br>"
+    "GitLab is an open-core, all-remote DevSecOps platform company founded in 2011 by "
+    "Dmitriy Zaporozhets and Valery Sizov. It is headquartered in San Francisco, CA, USA — "
+    "though as the <em>world's largest all-remote company</em>, its ~2,000+ team members "
+    "are distributed across 60+ countries with no physical offices. "
+    "GitLab went public on NASDAQ in October 2021 (ticker: GTLB) and serves over "
+    "30 million registered users, including more than 50% of Fortune 100 companies. "
+    "Its mission is <em>\"Everyone can contribute.\"</em><br><br>"
+    "<strong>What I can help you with:</strong><br>"
+    "<ul>"
+    "<li>GitLab's values, culture &amp; operating principles (CREDIT)</li>"
+    "<li>Engineering processes: code review, merge requests, CI/CD, incident response</li>"
+    "<li>People Operations: hiring, benefits, remote work, career growth</li>"
+    "<li>Product direction, roadmap &amp; strategy</li>"
+    "<li>GitLab company background, history &amp; remote culture</li>"
+    "</ul>"
+    "Just ask your question and I'll find the most relevant handbook sections for you."
+)
+
+
+def _is_meta_query(query: str) -> bool:
+    """Return True for chatbot-identity / GitLab-company questions."""
+    return bool(_score(_normalize(query), META_KEYWORDS))
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +264,15 @@ def run_rag_chain(query: str, history: list[dict] = None) -> dict:
         result["is_on_topic"] = is_on_topic
         if not is_on_topic:
             result["answer"] = get_off_topic_response()
+            return result
+
+        # ── Step 1b: Meta / identity short-circuit (no API call needed) ───
+        if _is_meta_query(query):
+            result["category"] = "meta"
+            result["category_label"] = "About"
+            result["answer"] = META_RESPONSE
+            result["is_confident"] = True
+            result["confidence_score"] = 1.0
             return result
 
         # ── Step 2: Route ─────────────────────────────────────────────────

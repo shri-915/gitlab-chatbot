@@ -10,6 +10,7 @@ VALID_CATEGORIES = {
     "people_ops",
     "product_direction",
     "values_culture",
+    "meta",
     "general",
 }
 
@@ -18,6 +19,7 @@ CATEGORY_BOOST_MAP = {
     "people_ops": "handbook",
     "product_direction": "direction",
     "values_culture": "handbook",
+    "meta": None,
     "general": None,
 }
 
@@ -26,7 +28,45 @@ CATEGORY_LABELS = {
     "people_ops": "People Operations",
     "product_direction": "Product Direction",
     "values_culture": "Values & Culture",
+    "meta": "About",
     "general": "General",
+}
+
+# Meta/identity keywords: questions about the chatbot itself or GitLab as a company
+META_KEYWORDS = {
+    "who are you",
+    "what are you",
+    "what do you do",
+    "what can you do",
+    "how do you work",
+    "tell me about yourself",
+    "introduce yourself",
+    "what is this",
+    "what is gitlab",
+    "tell me about gitlab",
+    "about gitlab",
+    "what does gitlab do",
+    "where is gitlab",
+    "where is gitlab located",
+    "gitlab headquarters",
+    "gitlab hq",
+    "gitlab history",
+    "when was gitlab founded",
+    "who founded gitlab",
+    "gitlab ceo",
+    "gitlab company",
+    "gitlab employees",
+    "is gitlab remote",
+    "gitlab remote",
+    "all remote",
+    "all-remote",
+    "gitlab public",
+    "gitlab stock",
+    "gitlab ipo",
+    "how can you help",
+    "help me",
+    "what topics",
+    "what questions",
 }
 
 ENGINEERING_KEYWORDS = {
@@ -128,6 +168,10 @@ def classify_query(query: str) -> tuple[str, str | None]:
     """Classify a query locally without calling Gemini."""
     text = _normalize(query)
 
+    # Meta / identity questions — check first (highest priority)
+    if _score(text, META_KEYWORDS):
+        return "meta", None
+
     scores = {
         "engineering": _score(text, ENGINEERING_KEYWORDS),
         "people_ops": _score(text, PEOPLE_OPS_KEYWORDS),
@@ -155,8 +199,12 @@ def classify_query(query: str) -> tuple[str, str | None]:
 
 
 def is_on_topic(query: str) -> bool:
-    """Keep questions that are clearly about GitLab handbook / direction."""
+    """Keep questions that are clearly about GitLab handbook / direction or the assistant itself."""
     text = _normalize(query)
+
+    # Meta questions (about the chatbot / GitLab company) are always on-topic
+    if _score(text, META_KEYWORDS):
+        return True
 
     if "gitlab" in text:
         if _score(text, OFF_TOPIC_KEYWORDS):
@@ -164,7 +212,7 @@ def is_on_topic(query: str) -> bool:
         return True
 
     category, _ = classify_query(query)
-    if category != "general":
+    if category not in ("general", "meta"):
         return True
 
     if _score(text, OFF_TOPIC_KEYWORDS):
