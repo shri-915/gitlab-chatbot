@@ -46,6 +46,21 @@ QUOTAS = {
 }
 
 
+def scale_quotas_for_key_count(key_count: int) -> None:
+    """
+    Scale per-minute and per-day quota ceilings by the number of active API keys.
+    Call this once after the key pool is initialised.
+
+    Example: 2 keys → flash RPD becomes 40, RPM becomes 10.
+    """
+    if key_count <= 1:
+        return
+    for bucket in ("flash",):
+        QUOTAS[bucket]["rpm"] = int(os.environ.get("GEMINI_FLASH_RPM", "5")) * key_count
+        QUOTAS[bucket]["rpd"] = int(os.environ.get("GEMINI_FLASH_RPD", "20")) * key_count
+    print(f"gemini_limits: scaled flash quota to {QUOTAS['flash']['rpm']} RPM / {QUOTAS['flash']['rpd']} RPD ({key_count} keys)")
+
+
 def estimate_tokens(text: str) -> int:
     """Roughly estimate tokens from text length."""
     if not text:
@@ -165,6 +180,6 @@ def acquire(bucket: str, tokens: int, operation: str = "request") -> None:
 
         sleep_for = max(1.0, wait_until - time.time())
         print(
-            f"  ⚠ Gemini {bucket} quota reached for {operation}; sleeping {sleep_for:.0f}s to stay within limits..."
+            f"Gemini {bucket} quota reached for {operation}; sleeping {sleep_for:.0f}s to stay within limits..."
         )
         time.sleep(sleep_for)

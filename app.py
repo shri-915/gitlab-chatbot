@@ -32,9 +32,16 @@ def _load_secret_to_env(secret_name: str) -> None:
         os.environ[secret_name] = secret_value
 
 
-_load_secret_to_env("GOOGLE_API_KEY")
-_load_secret_to_env("SUPABASE_URL")
-_load_secret_to_env("SUPABASE_KEY")
+def _load_all_secrets() -> None:
+    """Load core secrets + all GOOGLE_API_KEY_N keys into env vars."""
+    for key in ("GOOGLE_API_KEY", "SUPABASE_URL", "SUPABASE_KEY"):
+        _load_secret_to_env(key)
+    # Load numbered API keys for multi-key rotation
+    for i in range(1, 11):
+        _load_secret_to_env(f"GOOGLE_API_KEY_{i}")
+
+
+_load_all_secrets()
 
 from rag.chain import run_rag_chain
 

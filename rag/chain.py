@@ -17,8 +17,9 @@ from google.genai import types as genai_types
 from google.genai.errors import ClientError
 from tenacity import RetryError, retry, stop_after_attempt, wait_exponential, retry_if_exception
 
-from gemini_limits import acquire, estimate_tokens
+from gemini_limits import acquire, estimate_tokens, scale_quotas_for_key_count
 from rag.guardrail import check_on_topic, get_off_topic_response
+from rag.key_pool import GeminiKeyPool
 from rag.router import route_query, get_category_label
 from rag.retriever import retrieve_chunks, retrieve_chunks_boosted, get_top_similarity
 
@@ -32,10 +33,18 @@ TOP_K = 5
 
 
 def _retry_transient_generation_errors(exc: Exception) -> bool:
-    """Retry only transient model errors, not invalid config/model requests."""
+    """Retry only transient model errors; rotate API key on rate-limit."""
     if isinstance(exc, ClientError):
         code = getattr(exc, "code", None)
-        return code == 429 or (isinstance(code, int) and code >= 500)
+        if code == 429:
+            pool = _get_pool()
+            current = pool.current_key()
+            pool.mark_rate_limited(current, backoff_seconds=62.0)
+            if pool.key_count > 1:
+                new_key = pool.rotate()
+                print(f"Rate limited on key …{current[-6:]} — rotating to …{new_key[-6:]}")
+            return True
+        return isinstance(code, int) and code >= 500
     return True
 
 SYSTEM_PROMPT = """You are GitLab's official Handbook Assistant. You help GitLab employees and candidates understand GitLab's culture, processes, values, and product direction.
@@ -57,34 +66,31 @@ User question: {query}"""
 
 
 # ---------------------------------------------------------------------------
-# Client factory (singleton)
+# Client factory (pool-backed singleton)
 # ---------------------------------------------------------------------------
-_client: genai.Client = None
+_pool: GeminiKeyPool | None = None
+_clients: dict[str, genai.Client] = {}
 
 
-def _get_client() -> genai.Client:
-    """Get or create a google.genai Client."""
-    global _client
-    if _client is None:
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
-        if not api_key:
-            try:
-                import streamlit as st
-                api_key = st.secrets.get("GOOGLE_API_KEY", "")
-            except Exception:
-                pass
-        if not api_key:
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-                api_key = os.environ.get("GOOGLE_API_KEY", "")
-            except ImportError:
-                pass
-        _client = genai.Client(
+def _get_pool() -> GeminiKeyPool:
+    """Get or create the shared GeminiKeyPool (lazy, once per process)."""
+    global _pool
+    if _pool is None:
+        _pool = GeminiKeyPool.from_env()
+        scale_quotas_for_key_count(_pool.key_count)
+    return _pool
+
+
+def _get_client(api_key: str | None = None) -> genai.Client:
+    """Get or create a google.genai Client for the given API key."""
+    if api_key is None:
+        api_key = _get_pool().current_key()
+    if api_key not in _clients:
+        _clients[api_key] = genai.Client(
             api_key=api_key,
             http_options=genai_types.HttpOptions(api_version="v1beta"),
         )
-    return _client
+    return _clients[api_key]
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +151,11 @@ def _format_sources(chunks: list[dict]) -> list[dict]:
     retry=retry_if_exception(_retry_transient_generation_errors),
 )
 def _generate_answer(prompt: str) -> str:
-    """Call Gemini via the new google.genai SDK to generate an answer."""
+    """Call Gemini via the google.genai SDK to generate an answer."""
     acquire("flash", estimate_tokens(prompt) + 1500, operation="answer generation")
-    client = _get_client()
+    pool = _get_pool()
+    api_key = pool.current_key()
+    client = _get_client(api_key)
     response = client.models.generate_content(
         model=LLM_MODEL,
         contents=prompt,
