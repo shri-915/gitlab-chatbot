@@ -67,98 +67,6 @@
 
 ---
 
-## Setup Instructions
-
-### Prerequisites
-
-- Python 3.10+
-- A [Google AI Studio](https://aistudio.google.com/) API key (needed for answer generation with Gemini Flash)
-- A [Supabase](https://supabase.com/) project (free tier available)
-
-### Step 1: Clone the Repository
-
-```bash
-git clone https://github.com/your-username/gitlab-chatbot.git
-cd gitlab-chatbot
-```
-
-### Step 2: Install Dependencies
-
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Step 3: Set Up Supabase
-
-1. Create a new Supabase project at [supabase.com](https://supabase.com/)
-2. Go to **SQL Editor** in your Supabase dashboard
-3. Copy the contents of `supabase_setup.sql` and run it
-4. This creates the `gitlab_chunks` table, HNSW index, and `match_chunks` function
-
-### Step 4: Set Environment Variables
-
-**For local development:**
-
-```bash
-cp .env.example .env
-# Edit .env with your actual values:
-# GOOGLE_API_KEY=your_key_here
-# SUPABASE_URL=https://your-project.supabase.co
-# SUPABASE_KEY=your_anon_key_here
-```
-
-Also update `.streamlit/secrets.toml` for local Streamlit development.
-
-### Step 5: Run the Scraper (One-Time)
-
-```bash
-python scraper/scrape.py
-```
-
-This crawls GitLab's Handbook (up to 300 pages) and Direction pages, saving structured data to `scraped_data.json`. Takes ~10–15 minutes depending on your connection.
-
-### Step 6: Run the Ingestion Pipeline (One-Time)
-
-```bash
-python pipeline/ingest.py
-```
-
-This reads `scraped_data.json`, chunks the content, embeds each chunk locally, and upserts everything to Supabase. Takes ~5–10 minutes.
-
-### Step 7: Run the App
-
-```bash
-streamlit run app.py
-```
-
-The app will open at `http://localhost:8501`.
-
----
-
-## Deploy to Streamlit Community Cloud
-
-1. Push your code to a GitHub repository (ensure `scraped_data.json` and `venv/` are in `.gitignore`)
-2. Go to [share.streamlit.io](https://share.streamlit.io/)
-3. Click **"New app"** and select your repository
-4. Set the main file path to `app.py`
-5. Go to **"Advanced settings" → "Secrets"** and paste **only these three keys**:
-
-```toml
-GOOGLE_API_KEY = "your_actual_google_api_key"
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_KEY = "your_anon_key_here"
-```
-
-> **Why only 3 keys?** The embedding variables (`EMBEDDING_*`) and rate-limit config (`GEMINI_FLASH_*`) are only used during the one-time local ingestion pipeline, which has already been run. They are not needed at runtime on Streamlit Cloud.
-
-6. Click **"Deploy"**
-
-> **Note:** Make sure the ingestion pipeline has already been run and data exists in your Supabase database before deploying. The scraper and ingestion scripts do not run on Streamlit Cloud.
-
----
-
 ## Project Structure
 
 ```
@@ -289,6 +197,97 @@ This section documents the major technical decisions, failed approaches, and the
 | **Off-topic UX** | Off-topic and error responses now render in styled HTML cards (`.offtopic-card`, `.error-card`) with clear, non-alarming copy |
 | **guardrail.py bug fix** | `OFF_TOPIC_RESPONSE` was referenced but never defined — fixed by defining it in `guardrail.py` with proper HTML-formatted copy |
 | **Status** | **Current approach — production** |
+
+---
+## Setup Instructions - if you want to run this locally and deploy for yourself
+
+### Prerequisites
+
+- Python 3.10+
+- A [Google AI Studio](https://aistudio.google.com/) API key (needed for answer generation with Gemini Flash)
+- A [Supabase](https://supabase.com/) project (free tier available)
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/your-username/gitlab-chatbot.git
+cd gitlab-chatbot
+```
+
+### Step 2: Install Dependencies
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Step 3: Set Up Supabase
+
+1. Create a new Supabase project at [supabase.com](https://supabase.com/)
+2. Go to **SQL Editor** in your Supabase dashboard
+3. Copy the contents of `supabase_setup.sql` and run it
+4. This creates the `gitlab_chunks` table, HNSW index, and `match_chunks` function
+
+### Step 4: Set Environment Variables
+
+**For local development:**
+
+```bash
+cp .env.example .env
+# Edit .env with your actual values:
+# GOOGLE_API_KEY=your_key_here
+# SUPABASE_URL=https://your-project.supabase.co
+# SUPABASE_KEY=your_anon_key_here
+```
+
+Also update `.streamlit/secrets.toml` for local Streamlit development.
+
+### Step 5: Run the Scraper (One-Time)
+
+```bash
+python scraper/scrape.py
+```
+
+This crawls GitLab's Handbook (up to 300 pages) and Direction pages, saving structured data to `scraped_data.json`. Takes ~10–15 minutes depending on your connection.
+
+### Step 6: Run the Ingestion Pipeline (One-Time)
+
+```bash
+python pipeline/ingest.py
+```
+
+This reads `scraped_data.json`, chunks the content, embeds each chunk locally, and upserts everything to Supabase. Takes ~5–10 minutes.
+
+### Step 7: Run the App
+
+```bash
+streamlit run app.py
+```
+
+The app will open at `http://localhost:8501`.
+
+---
+
+## Deploy to Streamlit Community Cloud
+
+1. Push your code to a GitHub repository (ensure `scraped_data.json` and `venv/` are in `.gitignore`)
+2. Go to [share.streamlit.io](https://share.streamlit.io/)
+3. Click **"New app"** and select your repository
+4. Set the main file path to `app.py`
+5. Go to **"Advanced settings" → "Secrets"** and paste **only these three keys**:
+
+```toml
+GOOGLE_API_KEY = "your_actual_google_api_key"
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_KEY = "your_anon_key_here"
+```
+
+> **Why only 3 keys?** The embedding variables (`EMBEDDING_*`) and rate-limit config (`GEMINI_FLASH_*`) are only used during the one-time local ingestion pipeline, which has already been run. They are not needed at runtime on Streamlit Cloud.
+
+6. Click **"Deploy"**
+
+> **Note:** Make sure the ingestion pipeline has already been run and data exists in your Supabase database before deploying. The scraper and ingestion scripts do not run on Streamlit Cloud.
 
 ---
 
